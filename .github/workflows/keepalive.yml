@@ -1,0 +1,27 @@
+# Supabase pausa los proyectos del plan gratuito tras 7 días sin tráfico, y
+# restaurarlos exige entrar al panel a mano. Los concursos ocurren con meses de
+# diferencia, así que este ping semanal mantiene el proyecto despierto.
+#
+# Requiere dos secrets del repositorio (Settings → Secrets → Actions):
+#   SUPABASE_URL        — https://xxxx.supabase.co
+#   SUPABASE_ANON_KEY   — la clave anon (pública), NO la service_role
+name: keepalive
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # lunes 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Despertar la base de datos
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/sheet_templates?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}")
+          echo "HTTP $code"
+          # 200 = despierta. 401/404 también prueban que el proyecto responde,
+          # pero delatan una configuración mal puesta, así que fallan aquí.
+          test "$code" = "200"
