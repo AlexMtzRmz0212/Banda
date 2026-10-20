@@ -1,27 +1,83 @@
 # Supabase pausa los proyectos del plan gratuito tras 7 días sin tráfico, y
 # restaurarlos exige entrar al panel a mano. Los concursos ocurren con meses de
-# diferencia, así que este ping semanal mantiene el proyecto despierto.
+# diferencia, así que este ping mantiene el proyecto despierto.
 #
 # Requiere dos secrets del repositorio (Settings → Secrets → Actions):
 #   SUPABASE_URL        — https://xxxx.supabase.co
-#   SUPABASE_ANON_KEY   — la clave anon (pública), NO la service_role
+#   SUPABASE_ANON_KEY   — la clave anon o publishable (pública), NO la service_role
+#
+# Dos avisos sobre el cron, que no se arreglan desde aquí:
+#   · GitHub retrasa los trabajos programados cuando hay carga. Las corridas de
+#     octubre de 2026 salieron 7 y 9 horas tarde, así que un único ping semanal
+#     deja prácticamente cero margen frente al límite de 7 días. De ahí los dos
+#     pings por semana.
+#   · GitHub desactiva los cron de un repositorio sin commits durante 60 días.
+#     Tras un parón largo hay que reactivarlo a mano en la pestaña Actions.
 name: keepalive
 
 on:
-  schedule:
-    - cron: "0 9 * * 1" # lunes 09:00 UTC
+  # Cron desactivado a propósito: el keepalive sólo corre a mano desde la
+  # pestaña Actions (Run workflow). Para reactivarlo, descomenta el schedule.
+  # schedule:
+  #   - cron: "0 9 * * 1,4" # lunes y jueves, 09:00 UTC
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Despertar la base de datos
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/sheet_templates?select=id&limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}")
-          echo "HTTP $code"
-          # 200 = despierta. 401/404 también prueban que el proyecto responde,
-          # pero delatan una configuración mal puesta, así que fallan aquí.
-          test "$code" = "200"
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "::error::Faltan los secrets SUPABASE_URL o SUPABASE_ANON_KEY."
+            exit 1
+          fi
+
+          # sheet_templates tiene RLS y sus políticas son sólo "to authenticated",
+          # así que con la clave anon la respuesta correcta es 200 con [] vacío.
+          # Da igual: lo que mantiene vivo al proyecto es la consulta, no las filas.
+          url="${SUPABASE_URL%/}/rest/v1/sheet_templates?select=id&limit=1"
+          espera=15
+
+          # Tres intentos: un corte de red puntual no es un proyecto pausado.
+          for intento in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              --connect-timeout 10 --max-time 30 \
+              "$url" -H "apikey: $SUPABASE_ANON_KEY") || code=000
+            echo "Intento $intento: HTTP $code"
+            case "$code" in
+              2*)
+                echo "La base responde. Proyecto despierto."
+                exit 0
+                ;;
+            esac
+            if [ "$intento" -lt 3 ]; then
+              sleep "$espera"
+            fi
+          done
+
+          # Si llegamos aquí el ping falló tres veces. El código dice por qué,
+          # porque "falló el keepalive" a secas no le sirve a nadie dentro de
+          # seis meses.
+          case "$code" in
+            000)
+              echo "::error::El host de SUPABASE_URL no responde ni resuelve en DNS. Si el DNS no resuelve, el proyecto ya no existe (Supabase borra los proyectos pausados del plan gratuito) o SUPABASE_URL apunta a un ref equivocado. Revisa el panel de Supabase: esto no se arregla reintentando."
+              ;;
+            401 | 403)
+              echo "::error::HTTP $code: la base responde pero rechaza la clave. SUPABASE_ANON_KEY está mal, caducada o rotada."
+              ;;
+            404)
+              echo "::error::HTTP 404: la base responde pero no encuentra la tabla sheet_templates. Faltan las migraciones de supabase/migrations o cambió el nombre de la tabla."
+              ;;
+            5*)
+              echo "::error::HTTP $code: el proyecto está caído o pausado. Entra al panel de Supabase y restáuralo a mano."
+              ;;
+            *)
+              echo "::error::HTTP $code inesperado al consultar la base."
+              ;;
+          esac
+          exit 1

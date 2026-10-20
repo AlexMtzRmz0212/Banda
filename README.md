@@ -125,3 +125,21 @@ menores de edad. Para demostraciones, usa nombres de bandas inventados.
 través de `eslint-config-next` (herramienta de desarrollo, no código que se
 despliega) y la corrección automática degrada ESLint a la v14, lo que rompe el
 linting de Next 16. Se deja como está a propósito.
+
+### "fetch failed" en desarrollo
+
+Si al entrar aparece "Correo o contraseña incorrectos" aunque las credenciales
+sean buenas, y el servidor registra `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, es que
+un antivirus o proxy corporativo está interceptando HTTPS y firmando los
+certificados con una CA local que Node no trae en su almacén.
+
+No es un fallo de la aplicación. Avast, por ejemplo, define
+`NODE_EXTRA_CA_CERTS` al instalarse, y basta con que el servidor de desarrollo
+herede esa variable: arráncalo desde una terminal normal (`npm run dev`), no
+desde un proceso con el entorno limpio. Si hiciera falta forzarlo:
+
+```bash
+NODE_OPTIONS=--use-system-ca npm run dev
+```
+
+En producción no ocurre: no hay nada interceptando el tráfico.
