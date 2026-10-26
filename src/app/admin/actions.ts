@@ -287,3 +287,110 @@ export async function asignarJuez(
   revalidatePath(`/admin/${eventId}`);
   return OK;
 }
+
+// ─── Reabrir una hoja entregada ─────────────────────────────────────────
+
+/**
+ * Devuelve una hoja entregada al juez.
+ *
+ * Pasa en todos los concursos: el juez le da a Entregar en la banda
+ * equivocada. La hoja queda bloqueada y, sin esto, sólo se arreglaba
+ * entrando a la base de datos. El RLS ya permitía al admin hacerlo; faltaba
+ * el botón.
+ */
+export async function reabrirHoja(
+  eventId: string,
+  sheetId: string,
+): Promise<ActionState> {
+  await requireAdmin();
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("score_sheets")
+    .update({ status: "draft", locked_at: null, submitted_at: null })
+    .eq("id", sheetId);
+
+  if (error) return fail(mensajeDe(error));
+
+  revalidatePath(`/admin/${eventId}/tablero`);
+  revalidatePath(`/admin/${eventId}`);
+  return OK;
+}
+
+// ─── Cuentas de juez ────────────────────────────────────────────────────
+
+/**
+ * Genera una contraseña nueva.
+ *
+ * No se puede "ver" la anterior: Supabase sólo guarda un hash, y eso es
+ * deliberado — si la base se filtrara, no se filtrarían las contraseñas.
+ * Lo que sí se puede es poner una nueva y mostrarla una vez.
+ */
+export async function reiniciarPassword(
+  _prev: JuezState,
+  formData: FormData,
+): Promise<JuezState> {
+  await requireAdmin();
+
+  const judgeId = String(formData.get("judge_id") ?? "");
+  const email = String(formData.get("email") ?? "");
+  if (!judgeId) return fail("Falta la cuenta.");
+
+  const password = generarPassword();
+
+  const service = createServiceClient();
+  const { error } = await service.auth.admin.updateUserById(judgeId, {
+    password,
+  });
+
+  if (error) return fail(error.message);
+
+  return { ...OK, credenciales: { email, password } };
+}
+
+export async function renombrarJuez(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+
+  const judgeId = String(formData.get("judge_id") ?? "");
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  if (!nombre) return fail("Escribe el nombre.");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ full_name: nombre })
+    .eq("id", judgeId);
+
+  if (error) return fail(mensajeDe(error));
+
+  revalidatePath("/admin/jueces");
+  return OK;
+}
+
+export async function eliminarJuez(judgeId: string): Promise<ActionState> {
+  await requireAdmin();
+
+  // Si el juez ya calificó, borrarlo se llevaría sus calificaciones por
+  // delante. La llave foránea lo impide, y aquí se explica por qué.
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("assignments")
+    .select("id", { count: "exact", head: true })
+    .eq("judge_id", judgeId);
+
+  if ((count ?? 0) > 0) {
+    return fail(
+      "Este juez tiene hojas asignadas. Quítale las asignaciones antes de borrar la cuenta.",
+    );
+  }
+
+  const service = createServiceClient();
+  const { error } = await service.auth.admin.deleteUser(judgeId);
+  if (error) return fail(error.message);
+
+  revalidatePath("/admin/jueces");
+  return OK;
+}

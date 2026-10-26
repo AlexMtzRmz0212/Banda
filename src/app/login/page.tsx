@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession, homeFor } from "@/lib/dal";
 import { LoginForm } from "./login-form";
@@ -32,6 +33,15 @@ export default async function LoginPage({
 
         <p className="mt-6 text-center text-xs text-slate-500">
           ¿Problemas para entrar? Busca al coordinador del evento.
+        </p>
+
+        <p className="mt-3 text-center text-xs">
+          <Link
+            href="/instalar"
+            className="text-slate-500 underline-offset-4 hover:text-sky-400 hover:underline"
+          >
+            Instalar la app en esta computadora
+          </Link>
         </p>
       </div>
     </main>

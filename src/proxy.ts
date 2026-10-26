@@ -13,7 +13,7 @@ import { clientEnv } from "@/lib/env";
  * (src/lib/dal.ts) y, en última instancia, en las políticas RLS de Postgres.
  */
 
-const RUTAS_PUBLICAS = ["/login", "/auth"];
+const RUTAS_PUBLICAS = ["/login", "/auth", "/instalar"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });

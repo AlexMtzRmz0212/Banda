@@ -181,6 +181,7 @@ export function Tablero({
 
       <Section title="Avance por hoja">
         <Avance
+          eventId={eventId}
           bandas={bandas}
           plantillas={plantillas}
           asignaciones={asignaciones}

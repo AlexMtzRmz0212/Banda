@@ -28,6 +28,15 @@ export default async function AdminPage() {
 
   return (
     <AdminShell title="Eventos" subtitle={session.email}>
+      <Section title="Cuentas">
+        <Link
+          href="/admin/jueces"
+          className="inline-block rounded-lg border border-slate-700 px-4 py-2.5 text-sm transition-colors hover:border-sky-500 hover:text-sky-400"
+        >
+          Administrar jueces
+        </Link>
+      </Section>
+
       <Section title="Tus eventos">
         {eventos && eventos.length > 0 ? (
           <ul className="space-y-2">

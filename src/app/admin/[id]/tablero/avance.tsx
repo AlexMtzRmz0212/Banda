@@ -1,6 +1,9 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { Empty } from "@/components/admin-shell";
+import { ErrorText } from "@/components/ui";
+import { reabrirHoja } from "../../actions";
 import type { Asignacion, Banda, HojaTotal, Plantilla } from "./tablero";
 
 type EstadoHoja = "entregada" | "en_curso" | "sin_empezar" | "sin_juez";
@@ -26,16 +29,36 @@ const ETIQUETA: Record<EstadoHoja, string> = {
  * evento — y qué juez va atrasado mientras el concurso sigue.
  */
 export function Avance({
+  eventId,
   bandas,
   plantillas,
   asignaciones,
   hojas,
 }: {
+  eventId: string;
   bandas: Banda[];
   plantillas: Plantilla[];
   asignaciones: Asignacion[];
   hojas: HojaTotal[];
 }) {
+  const [pendiente, startTransition] = useTransition();
+  const [porReabrir, setPorReabrir] = useState<{
+    sheetId: string;
+    banda: string;
+    hoja: string;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reabrir = () => {
+    if (!porReabrir) return;
+    const { sheetId } = porReabrir;
+    setPorReabrir(null);
+    setError(null);
+    startTransition(async () => {
+      const r = await reabrirHoja(eventId, sheetId);
+      if (r.error) setError(r.error);
+    });
+  };
   if (bandas.length === 0 || plantillas.length === 0) {
     return <Empty>Falta registrar bandas o armar las hojas del evento.</Empty>;
   }
@@ -50,14 +73,19 @@ export function Avance({
     })),
   );
 
+  const hojaDe = (bandId: string, asignacionId: string | undefined) =>
+    asignacionId
+      ? hojas.find(
+          (h) => h.band_id === bandId && h.assignment_id === asignacionId,
+        )
+      : undefined;
+
   const estadoDe = (
     bandId: string,
     asignacionId: string | undefined,
   ): EstadoHoja => {
     if (!asignacionId) return "sin_juez";
-    const hoja = hojas.find(
-      (h) => h.band_id === bandId && h.assignment_id === asignacionId,
-    );
+    const hoja = hojaDe(bandId, asignacionId);
     if (!hoja) return "sin_empezar";
     return hoja.status === "submitted" ? "entregada" : "en_curso";
   };
@@ -127,16 +155,47 @@ export function Avance({
                 </th>
                 {puestos.map((p) => {
                   const estado = estadoDe(b.id, p.asignacion?.id);
+                  const hoja = hojaDe(b.id, p.asignacion?.id);
+                  const nombreHoja =
+                    p.plantilla.name +
+                    (p.plantilla.judge_slots > 1 ? ` · Juez ${p.slot}` : "");
+
+                  // Sólo las entregadas se pueden reabrir: es el único
+                  // estado del que un juez no puede salir por su cuenta.
+                  const reabrible = estado === "entregada" && hoja?.sheet_id;
+
                   return (
                     <td
                       key={`${b.id}-${p.plantilla.id}-${p.slot}`}
                       className="px-1 py-2 text-center"
                     >
-                      <span
-                        className={`inline-block h-4 w-4 rounded ${COLOR[estado]}`}
-                        title={`${b.name} · ${p.plantilla.name}: ${ETIQUETA[estado]}`}
-                      />
-                      <span className="sr-only">{ETIQUETA[estado]}</span>
+                      {reabrible ? (
+                        <button
+                          type="button"
+                          disabled={pendiente}
+                          onClick={() =>
+                            setPorReabrir({
+                              sheetId: hoja!.sheet_id!,
+                              banda: b.name,
+                              hoja: nombreHoja,
+                            })
+                          }
+                          title={`${b.name} · ${nombreHoja}: entregada — clic para reabrir`}
+                          className={`inline-block h-4 w-4 rounded ${COLOR[estado]} transition-transform hover:scale-125 disabled:opacity-50`}
+                        >
+                          <span className="sr-only">
+                            Reabrir {nombreHoja} de {b.name}
+                          </span>
+                        </button>
+                      ) : (
+                        <>
+                          <span
+                            className={`inline-block h-4 w-4 rounded ${COLOR[estado]}`}
+                            title={`${b.name} · ${nombreHoja}: ${ETIQUETA[estado]}`}
+                          />
+                          <span className="sr-only">{ETIQUETA[estado]}</span>
+                        </>
+                      )}
                     </td>
                   );
                 })}
@@ -154,6 +213,57 @@ export function Avance({
           </li>
         ))}
       </ul>
+
+      <p className="text-xs text-slate-600">
+        Clic en una hoja entregada para devolvérsela al juez.
+      </p>
+
+      {error ? <ErrorText>{error}</ErrorText> : null}
+
+      {porReabrir ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="titulo-reabrir"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+          onClick={() => setPorReabrir(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900 p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="titulo-reabrir" className="font-medium">
+              ¿Reabrir esta hoja?
+            </h3>
+            <p className="mt-2 text-sm text-slate-400">
+              <strong className="text-slate-200">{porReabrir.banda}</strong>
+              <br />
+              {porReabrir.hoja}
+            </p>
+            <p className="mt-3 text-sm text-slate-400">
+              El juez podrá volver a calificarla y entregarla. Las
+              calificaciones que ya capturó se conservan.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPorReabrir(null)}
+                className="h-10 rounded-lg px-4 text-sm text-slate-400 hover:text-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={reabrir}
+                autoFocus
+                className="h-10 rounded-lg bg-amber-500 px-4 text-sm font-medium text-slate-950 hover:bg-amber-400"
+              >
+                Reabrir
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
