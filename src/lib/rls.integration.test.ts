@@ -13,6 +13,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { CONVOCATORIA_PDF, buildCatalog } from "./sheets";
 
 config({ path: ".env.local" });
 
@@ -92,14 +93,43 @@ beforeAll(async () => {
     .single();
   ids.band = banda!.id;
 
-  // Dos plantillas distintas, una por juez.
-  const { data: plantillas } = await admin
+  // Las hojas son del evento, no del catálogo: la llave compuesta de
+  // assignments (template_id, event_id) rechaza una plantilla ajena.
+  const catalogo = buildCatalog(CONVOCATORIA_PDF);
+  const { data: plantillas, error: plantillasError } = await admin
     .from("sheet_templates")
-    .select("id, code")
-    .in("code", ["revista_personal", "orden_cerrado"]);
+    .insert(
+      catalogo.map((h) => ({
+        event_id: ids.event,
+        code: h.code,
+        name: h.name,
+        judge_slots: h.judgeSlots,
+        counts_toward_total: h.countsTowardTotal,
+        max_points: h.maxPoints,
+      })),
+    )
+    .select("id, code");
+  if (plantillasError) throw plantillasError;
 
   const tplA = plantillas!.find((t) => t.code === "revista_personal")!;
   const tplB = plantillas!.find((t) => t.code === "orden_cerrado")!;
+
+  // Criterios sólo de las dos hojas que usa la prueba.
+  for (const [tpl, code] of [
+    [tplA, "revista_personal"],
+    [tplB, "orden_cerrado"],
+  ] as const) {
+    const hoja = catalogo.find((h) => h.code === code)!;
+    const { error } = await admin.from("sheet_criteria").insert(
+      hoja.criteria.map((c, i) => ({
+        template_id: tpl.id,
+        section: c.section,
+        position: i + 1,
+        label: c.label,
+      })),
+    );
+    if (error) throw error;
+  }
 
   const { data: asignaciones } = await admin
     .from("assignments")
@@ -269,10 +299,46 @@ describe("integridad de las calificaciones", () => {
 
 describe("hoja entregada y bloqueada", () => {
   beforeAll(async () => {
-    await admin
+    // La entrega se hace COMO EL JUEZ, no con la clave secreta: usar la clave
+    // secreta aquí saltaba el RLS y escondió que la política de entrega era
+    // imposible de cumplir (ver migración 0004).
+    const { error } = await clientA
       .from("score_sheets")
-      .update({ status: "submitted", locked_at: new Date().toISOString() })
+      .update({
+        status: "submitted",
+        submitted_at: new Date().toISOString(),
+        locked_at: new Date().toISOString(),
+      })
       .eq("id", sheetA);
+
+    expect(error).toBeNull();
+
+    // Un UPDATE que no alcanza ningún renglón tampoco es un error: hay que
+    // confirmar que de verdad quedó bloqueada.
+    const { data } = await admin
+      .from("score_sheets")
+      .select("status, locked_at")
+      .eq("id", sheetA)
+      .single();
+
+    expect(data!.status).toBe("submitted");
+    expect(data!.locked_at).not.toBeNull();
+  });
+
+  it("el juez no puede reabrir lo que entregó", async () => {
+    await clientA
+      .from("score_sheets")
+      .update({ status: "draft", locked_at: null })
+      .eq("id", sheetA);
+
+    const { data } = await admin
+      .from("score_sheets")
+      .select("status, locked_at")
+      .eq("id", sheetA)
+      .single();
+
+    expect(data!.status).toBe("submitted");
+    expect(data!.locked_at).not.toBeNull();
   });
 
   it("el juez sigue viendo lo que entregó", async () => {
@@ -296,11 +362,18 @@ describe("hoja entregada y bloqueada", () => {
   });
 
   it("ni capturar criterios nuevos", async () => {
+    // Otro criterio de la MISMA hoja, no uno cualquiera de la base.
+    const { data: deA } = await admin
+      .from("sheet_criteria")
+      .select("template_id")
+      .eq("id", criterionA)
+      .single();
+
     const { data: otro } = await admin
       .from("sheet_criteria")
       .select("id")
+      .eq("template_id", deA!.template_id)
       .eq("position", 2)
-      .limit(1)
       .single();
 
     const { error } = await clientA

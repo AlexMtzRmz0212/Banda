@@ -45,18 +45,11 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "assignments_template_id_fkey";
-            columns: ["template_id"];
+            foreignKeyName: "assignments_template_del_evento_fkey";
+            columns: ["template_id", "event_id"];
             isOneToOne: false;
             referencedRelation: "sheet_templates";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "assignments_template_id_fkey";
-            columns: ["template_id"];
-            isOneToOne: false;
-            referencedRelation: "v_sheet_totals";
-            referencedColumns: ["template_id"];
+            referencedColumns: ["id", "event_id"];
           },
         ];
       };
@@ -138,9 +131,11 @@ export type Database = {
           created_at: string;
           event_date: string;
           id: string;
+          marchas_count: number;
           name: string;
           owner_id: string;
           status: Database["public"]["Enums"]["event_status"];
+          toques_count: number;
           venue: string;
         };
         ComputedFields: never;
@@ -148,18 +143,22 @@ export type Database = {
           created_at?: string;
           event_date: string;
           id?: string;
+          marchas_count?: number;
           name: string;
           owner_id: string;
           status?: Database["public"]["Enums"]["event_status"];
+          toques_count?: number;
           venue?: string;
         };
         Update: {
           created_at?: string;
           event_date?: string;
           id?: string;
+          marchas_count?: number;
           name?: string;
           owner_id?: string;
           status?: Database["public"]["Enums"]["event_status"];
+          toques_count?: number;
           venue?: string;
         };
         Relationships: [
@@ -379,6 +378,7 @@ export type Database = {
         Row: {
           code: string;
           counts_toward_total: boolean;
+          event_id: string | null;
           id: string;
           judge_slots: number;
           max_points: number;
@@ -389,6 +389,7 @@ export type Database = {
         Insert: {
           code: string;
           counts_toward_total?: boolean;
+          event_id?: string | null;
           id?: string;
           judge_slots?: number;
           max_points: number;
@@ -398,13 +399,22 @@ export type Database = {
         Update: {
           code?: string;
           counts_toward_total?: boolean;
+          event_id?: string | null;
           id?: string;
           judge_slots?: number;
           max_points?: number;
           name?: string;
           version?: number;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "sheet_templates_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: {

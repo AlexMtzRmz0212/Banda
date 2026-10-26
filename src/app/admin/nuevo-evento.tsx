@@ -63,6 +63,55 @@ export function NuevoEvento() {
         />
       </div>
 
+      <fieldset className="rounded-lg border border-slate-800 p-3">
+        <legend className="px-1 text-sm text-slate-300">
+          Lo que pide la convocatoria
+        </legend>
+        <p className="mb-3 text-xs text-slate-500">
+          Define el tamaño de las hojas de toques y marchas, y con ello el
+          puntaje máximo del evento. No se puede cambiar una vez que empiecen a
+          calificar.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="toques_count"
+              className="mb-1.5 block text-sm text-slate-300"
+            >
+              Toques de ordenanza
+            </label>
+            <input
+              id="toques_count"
+              name="toques_count"
+              type="number"
+              min={1}
+              max={20}
+              defaultValue={3}
+              required
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="marchas_count"
+              className="mb-1.5 block text-sm text-slate-300"
+            >
+              Marchas reglamentarias
+            </label>
+            <input
+              id="marchas_count"
+              name="marchas_count"
+              type="number"
+              min={1}
+              max={20}
+              defaultValue={1}
+              required
+              className={inputClass}
+            />
+          </div>
+        </div>
+      </fieldset>
+
       <ErrorText>{state.error}</ErrorText>
       <SubmitButton pendingLabel="Creando…">Crear evento</SubmitButton>
     </form>

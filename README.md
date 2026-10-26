@@ -121,10 +121,10 @@ menores de edad. Para demostraciones, usa nombres de bandas inventados.
 
 ## Notas
 
-`npm audit` reporta `braces` como vulnerabilidad alta. Llega únicamente a
-través de `eslint-config-next` (herramienta de desarrollo, no código que se
-despliega) y la corrección automática degrada ESLint a la v14, lo que rompe el
-linting de Next 16. Se deja como está a propósito.
+Mantén Next.js al día. La versión 16.4.0 traía una vulnerabilidad conocida y
+el propio `next build` se detenía a avisarlo; se actualizó a 16.4.3, con lo
+que `npm audit` quedó en cero. Si `next build` vuelve a detenerse con ese
+aviso, actualiza antes de desplegar.
 
 ### "fetch failed" en desarrollo
 

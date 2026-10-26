@@ -24,3 +24,65 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+   Impresión
+   Los reportes no usan una librería de PDF: se imprimen desde el navegador
+   con "Guardar como PDF". Así lo que se ve en pantalla es exactamente el
+   documento, y no hay un segundo renderizador que mantener al día.
+   ─────────────────────────────────────────────────────────────────────── */
+
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 14mm 12mm;
+  }
+
+  /* El tema oscuro gasta tóner y se lee peor en papel. */
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .no-imprimir {
+    display: none !important;
+  }
+
+  .hoja-impresa {
+    max-width: none !important;
+    padding: 0 !important;
+    color: #000 !important;
+  }
+
+  .hoja-impresa * {
+    color: #000 !important;
+    background: transparent !important;
+    border-color: #999 !important;
+  }
+
+  /* Una hoja de evaluación por página, como el formato de papel. */
+  .salto-pagina {
+    break-before: page;
+  }
+
+  .evitar-corte {
+    break-inside: avoid;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    border: 1px solid #999 !important;
+    padding: 3px 5px;
+    font-size: 10pt;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}
